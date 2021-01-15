@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "IoTDeviceAppLauncher": {
+      "commandName": "Project",
+      "commandLineArgs": "\"HostName=egiothub20200121.azure-devices.net;DeviceId=surfacebook-child-app;SharedAccessKey=Mxvu+Z9PDjA8hU2az1jUlRTWev6GNfJlzR3YgoerFXE=\""
+    }
+  }
+}
