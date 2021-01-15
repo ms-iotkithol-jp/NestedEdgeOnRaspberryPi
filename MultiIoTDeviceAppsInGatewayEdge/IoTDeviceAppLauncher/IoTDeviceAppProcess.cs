@@ -1,9 +1,12 @@
-﻿using System;
+﻿#define USE_PIPELINE_STREAM
+
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
+using System.IO.Pipes;
 
 namespace IoTDeviceAppLauncher
 {
@@ -17,6 +20,16 @@ namespace IoTDeviceAppLauncher
         public static readonly string SharedAccessKeyArgKey = "SharedAccessKey";
         public static readonly string GatewayHostNameArgKey = "GatewayHostName";
 
+#if USE_PIPELINE_STREAM
+        static string appInputPipelineStreamName = "iotDevAppInputPipelinStream";
+        static string appOutputPipelineStreamName = "iotDevAppOutputPipelineStream";
+        NamedPipeClientStream procPipeClientOutputStream;
+        NamedPipeClientStream procPipeClientInputStream;
+        StreamReader procStreamReader;
+
+#endif
+        StreamWriter procStreamWriter;
+
         private string launchName;
         private string trustedCACertPath;
         public bool IsStarted { get; set; }
@@ -24,8 +37,7 @@ namespace IoTDeviceAppLauncher
 
         public StreamReader myStandardOutput { get { return myProcess.StandardOutput; } }
         public StreamReader myStandardError { get { return myProcess.StandardError; } }
-        public StreamWriter myStandardInput { get { return myProcess.StandardInput; } }
-
+  
         
         // commandName = "dotnet run iotdevapp.dll"
         public IoTDeviceAppProcess(string launchName, string trustedCACertPath)
@@ -77,7 +89,7 @@ namespace IoTDeviceAppLauncher
         {
             var msgChars = System.Text.Encoding.UTF8.GetChars(message);
             Console.WriteLine($"Message Sending:{System.Text.Encoding.UTF8.GetString(message)}");
-            await myStandardInput.WriteLineAsync(msgChars);
+            await procStreamWriter.WriteLineAsync(msgChars);
         }
 
         private void MyProcess_ErrorDataReceived(object sender, DataReceivedEventArgs e)
@@ -92,14 +104,25 @@ namespace IoTDeviceAppLauncher
             Console.WriteLine(e.Data);
         }
 
-        public bool Start()
+        public async Task<bool> Start()
         {
             if (myProcess != null && IsStarted == false)
             {
                 IsStarted = myProcess.Start();
+#if USE_PIPELINE_STREAM
+                procPipeClientInputStream = new NamedPipeClientStream(".",appOutputPipelineStreamName, PipeDirection.In);
+                procPipeClientInputStream.Connect();
+                procPipeClientOutputStream = new NamedPipeClientStream(".", appInputPipelineStreamName, PipeDirection.Out);
+                procPipeClientOutputStream.Connect();
+                procStreamReader = new StreamReader(procPipeClientInputStream);
+                procStreamWriter = new StreamWriter(procPipeClientOutputStream);
+
+                ReceiveProcOutput(procStreamReader);
+#else
                 myProcess.BeginOutputReadLine();
                 myProcess.BeginErrorReadLine();
-
+                procStreamWriter = myProcess.StandardInput;
+#endif
             }
             return IsStarted;
         }
@@ -109,7 +132,11 @@ namespace IoTDeviceAppLauncher
             bool result = true;
             if (IsStarted)
             {
-                await myStandardInput.WriteAsync("q");
+                await procStreamWriter.WriteAsync("q");
+#if USE_PIPELINE_STREAM
+                procPipeClientInputStream.Close();
+                procPipeClientOutputStream.Close();
+#endif
                 myProcess.WaitForExit();
                 myProcess.Close();
             }
@@ -118,6 +145,22 @@ namespace IoTDeviceAppLauncher
                 result = false;
             }
             return result;
+        }
+
+        async Task ReceiveProcOutput(StreamReader reader)
+        {
+            try
+            {
+                while (true)
+                {
+                    string output = await reader.ReadLineAsync();
+                    Console.WriteLine($"[{TargetDeviceId}] ${output}");
+                }
+            }
+            catch(Exception ex)
+            {
+                Console.WriteLine($"ReceiveProcOutput:Exception - {ex.Message}");
+            }
         }
     }
 }

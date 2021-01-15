@@ -40,9 +40,11 @@ namespace IoTDeviceAppLauncher
             deviceClient = DeviceClient.CreateFromConnectionString(args[0]);
             deviceClient.SetMethodDefaultHandlerAsync(directMethodHandler, deviceClient).Wait();
             deviceClient.OpenAsync().Wait();
-#else
-#endif
             Console.WriteLine("IoT Hub Connected.");
+#else
+            Init().Wait();
+            Console.WriteLine("Edge Runtime Connected.");
+#endif
 
             cancellationTokenSource = new CancellationTokenSource();
             AssemblyLoadContext.Default.Unloading += (ctx) => { cancellationTokenSource.Cancel(); };
@@ -123,41 +125,49 @@ namespace IoTDeviceAppLauncher
             int resultStatus = 200;
             Console.WriteLine($"Invoked - {methodRequest.Name}({methodRequest.DataAsJson})");
             dynamic payloadJson = Newtonsoft.Json.JsonConvert.DeserializeObject(methodRequest.DataAsJson);
-            string launchCommand = "";
             string appDeviceId = "";
-            string trustedCACertPath = "";
-            if (payloadJson.LaunchCommand != null) launchCommand = payloadJson.LaunchCommand;
             if (payloadJson.DeviceId != null) appDeviceId = payloadJson.DeviceId;
-            if (payloadJson.TrustedCACertPath != null) trustedCACertPath = payloadJson.TrustedCACertPath;
-            if (launchCommand != null && appDeviceId != null)
+            if (appDeviceId != null)
             {
                 try
                 {
                     switch (methodRequest.Name)
                     {
                         case "Start":
-                            var iotAppProc = new IoTDeviceAppProcess(launchCommand, trustedCACertPath);
-                            launchedIoTDevProcs.Add(appDeviceId, iotAppProc);
-                            var p = iotAppProc.Create(methodRequest.DataAsJson);
-
-                            var started = iotAppProc.Start();
-                            if (started)
+                            string launchCommand = "";
+                            string trustedCACertPath = "";
+                            if (payloadJson.LaunchCommand != null) launchCommand = payloadJson.LaunchCommand;
+                            if (payloadJson.TrustedCACertPath != null) trustedCACertPath = payloadJson.TrustedCACertPath;
+                            if (launchCommand != null && trustedCACertPath!=null)
                             {
-                                resultPayload = "Created and Started";
-                                resultStatus = 201;
+                                var iotAppProc = new IoTDeviceAppProcess(launchCommand, trustedCACertPath);
+                                var p = iotAppProc.Create(methodRequest.DataAsJson);
+                                launchedIoTDevProcs.Add(appDeviceId, iotAppProc);
+
+                                var started = await iotAppProc.Start();
+                                if (started)
+                                {
+                                    resultPayload = "Created and Started";
+                                    resultStatus = 201;
+                                }
+                                else
+                                {
+                                    resultPayload = "Failed";
+                                    resultStatus = 202;
+                                }
                             }
                             else
                             {
-                                resultPayload = "Failed";
-                                resultStatus = 202;
+                                resultPayload = "Bad Request";
+                                resultStatus = 404;
                             }
                             break;
                         case "Stop":
-                            if (launchedIoTDevProcs.ContainsKey(payloadJson[IoTDeviceAppProcess.DeviceIdArgKey]))
+                            if (launchedIoTDevProcs.ContainsKey(appDeviceId))
                             {
-                                var iotDevProc = launchedIoTDevProcs[payloadJson[IoTDeviceAppProcess.DeviceIdArgKey]];
+                                var iotDevProc = launchedIoTDevProcs[appDeviceId];
                                 await iotDevProc.Stop();
-                                launchedIoTDevProcs.Remove(payloadJson[IoTDeviceAppProcess.DeviceIdArgKey]);
+                                launchedIoTDevProcs.Remove(appDeviceId);
                                 resultPayload = "Stopped";
                             }
                             else
@@ -165,6 +175,20 @@ namespace IoTDeviceAppLauncher
                                 resultPayload = "The process for specified device id doesn't exist.";
                                 resultStatus = 202;
                             }
+                            break;
+                        case "SendMessageToIoTDevApp":
+                            if (launchedIoTDevProcs.ContainsKey(appDeviceId))
+                            {
+                                var iotDevProc = launchedIoTDevProcs[appDeviceId];
+                                dynamic toMsg = payloadJson["message"];
+                                string msg = Newtonsoft.Json.JsonConvert.SerializeObject(toMsg);
+                                await iotDevProc.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
+                                resultPayload = $"Sent msg({msg}) to {appDeviceId}";
+                            }
+                            break;
+                        default:
+                            resultPayload = "Bad Request";
+                            resultStatus = 404;
                             break;
                     }
                 }
