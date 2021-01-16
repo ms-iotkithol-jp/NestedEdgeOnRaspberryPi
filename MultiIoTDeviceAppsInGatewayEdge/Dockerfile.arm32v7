@@ -24,4 +24,7 @@ COPY --from=build-env-app /app/out ./iotapp
 RUN ls -la
 RUN ls -la ./iotapp
 
+# Case for running on IoT Edge Runtime
 ENTRYPOINT ["./IoTDeviceAppLauncher"]
+# Case for running on Docker : at the time to define DESKTOP_TEST in IoTDeviceAppLauncher/Program.cs
+# ENTRYPOINT ["./IoTDeviceAppLauncher", "<- device connection string ->"]
