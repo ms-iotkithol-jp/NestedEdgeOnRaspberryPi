@@ -1,4 +1,7 @@
-﻿#define USE_PIPELINE_STREAM
+﻿// #define USE_PIPELINE_STREAM
+// IoT Edge Module として起動すると、親プロセスとの間でStandard Input、Standard Outputのテキスト受け渡しができなかったので、
+// とりあえず、Named Pipeを試してみたが、Standard Input、Standard Outputは、Create Optionsで、OpenStdionをtrueに設定すると使えるようになったので、
+// そちらを採用。悪戦苦闘の記録として一応残しておく
 
 using System;
 using System.Collections.Generic;
