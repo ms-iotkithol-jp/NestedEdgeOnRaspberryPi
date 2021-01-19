@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace IoTDeviceAppForGatewayEdge
@@ -43,18 +44,18 @@ namespace IoTDeviceAppForGatewayEdge
 
             if (args.Length == 0)
             {
-                AppStreamWriter.WriteLine("Command line:");
-                AppStreamWriter.WriteLine("dotnet run iothub-device-connection-string [IOTEDGE_TRUSTED_CA_CERTIFICATE_PEM_PATH]");
+                AppStreamWriter.WriteLine("log:Command line:");
+                AppStreamWriter.WriteLine("log:dotnet run iothub-device-connection-string [IOTEDGE_TRUSTED_CA_CERTIFICATE_PEM_PATH]");
                 return;
             }
             
             string iothubcs = args[0];
-            AppStreamWriter.WriteLine($"Connection string of IoT Hub Device:{iothubcs}");
+            AppStreamWriter.WriteLine($"log:Connection string of IoT Hub Device:{iothubcs}");
             if (args.Length == 2)
             {
                 string trustedCACertPath = args[1];
                 InstallCACert(trustedCACertPath);
-                AppStreamWriter.WriteLine($"Installed {trustedCACertPath} as Certficate");
+                AppStreamWriter.WriteLine($"log:Installed {trustedCACertPath} as Certficate");
             }
 
             DoWork(iothubcs).Wait();
@@ -110,14 +111,26 @@ namespace IoTDeviceAppForGatewayEdge
                     var input = AppStreamReader.ReadLine().Trim();
                     if (input.ToLower().StartsWith("quit"))
                     {
-                        AppStreamWriter.WriteLine("Quit");
+                        AppStreamWriter.WriteLine("log:Quit");
                         break;
                     }
                     else
                     {
-                        var msg = new Message(System.Text.Encoding.UTF8.GetBytes(input));
-                        AppStreamWriter.WriteLine($"Input - {input}");
-                        await deviceClient.SendEventAsync(msg);
+                        string d2cMessageKey = "d2c:";
+                        string urpMessageKey = "urp:";
+                        if (input.StartsWith(d2cMessageKey))
+                        {
+                            var msg = new Message(System.Text.Encoding.UTF8.GetBytes(input.Substring(d2cMessageKey.Length)));
+                            AppStreamWriter.WriteLine($"log:Send D2C - {input}");
+                            await deviceClient.SendEventAsync(msg);
+                        }
+                        else if (input.StartsWith(urpMessageKey))
+                        {
+                            var reported = new TwinCollection();
+                            AppStreamWriter.WriteLine($"log:Update RP - {input}");
+                            reported["External"] = new TwinCollection(input.Substring(urpMessageKey.Length));
+                            await deviceClient.UpdateReportedPropertiesAsync(reported);
+                        }
                     }
                 }
 
@@ -126,29 +139,30 @@ namespace IoTDeviceAppForGatewayEdge
             }
             catch(Exception ex)
             {
-                AppStreamWriter.WriteLine($"Exception {ex.Message}");
+                AppStreamWriter.WriteLine($"log:Exception {ex.Message}");
             }
         }
 
         private static void ConnectionStatusChangeHandler(ConnectionStatus status, ConnectionStatusChangeReason reason)
         {
-            AppStreamWriter.WriteLine($"ConnectionStatus Changed - status={status},reason={reason}");
+            AppStreamWriter.WriteLine($"log:ConnectionStatus Changed - status={status},reason={reason}");
         }
 
         private static async Task ReceiveMessageHandler(Message message, object userContext)
         {
-            AppStreamWriter.WriteLine($"Recieved - {System.Text.Encoding.UTF8.GetString(message.GetBytes())}");
-            foreach(var prp in message.Properties)
+            var recvMsg = new
             {
-                AppStreamWriter.WriteLine($" {prp.Key}:{prp.Value}");
-            }
+                properties = message.Properties,
+                message = System.Text.Encoding.UTF8.GetString(message.GetBytes())
+            };
+            AppStreamWriter.WriteLine($"Recieved:{Newtonsoft.Json.JsonConvert.SerializeObject(recvMsg)}");
             var deviceClient = (DeviceClient)userContext;
             await deviceClient.CompleteAsync(message);
         }
 
         private static async Task<MethodResponse> MethodHandler(MethodRequest methodRequest, object userContext)
         {
-            AppStreamWriter.WriteLine($"Invoked - {methodRequest.Name}({methodRequest.DataAsJson})");
+            AppStreamWriter.WriteLine($"Invoked:{methodRequest.Name}({methodRequest.DataAsJson})");
             var payload = new
             {
                 message = "OK"
@@ -161,36 +175,33 @@ namespace IoTDeviceAppForGatewayEdge
         {
             var deviceClient = (DeviceClient)userContext;
             var dpJson = desiredProperties.ToJson();
-            AppStreamWriter.WriteLine($"Updated - Desired Properties={dpJson}");
-            var reported = new TwinCollection();
-            reported["Desired"] = new TwinCollection(dpJson);
-            await deviceClient.UpdateReportedPropertiesAsync(reported);
+            AppStreamWriter.WriteLine($"Updated:{dpJson}");
         }
 
         static void InstallCACert(string trustedCACertPath)
         {
             if (!string.IsNullOrWhiteSpace(trustedCACertPath))
             {
-                AppStreamWriter.WriteLine("User configured CA certificate path: {0}", trustedCACertPath);
+                AppStreamWriter.WriteLine("log:User configured CA certificate path: {0}", trustedCACertPath);
                 if (!File.Exists(trustedCACertPath))
                 {
                     // cannot proceed further without a proper cert file
-                    AppStreamWriter.WriteLine("Certificate file not found: {0}", trustedCACertPath);
+                    AppStreamWriter.WriteLine("log:Certificate file not found: {0}", trustedCACertPath);
                     throw new InvalidOperationException("Invalid certificate file.");
                 }
                 else
                 {
-                    AppStreamWriter.WriteLine("Attempting to install CA certificate: {0}", trustedCACertPath);
+                    AppStreamWriter.WriteLine("log:Attempting to install CA certificate: {0}", trustedCACertPath);
                     X509Store store = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
                     store.Open(OpenFlags.ReadWrite);
                     store.Add(new X509Certificate2(X509Certificate.CreateFromCertFile(trustedCACertPath)));
-                    AppStreamWriter.WriteLine("Successfully added certificate: {0}", trustedCACertPath);
+                    AppStreamWriter.WriteLine("log:Successfully added certificate: {0}", trustedCACertPath);
                     store.Close();
                 }
             }
             else
             {
-                AppStreamWriter.WriteLine("CA_CERTIFICATE_PATH was not set or null, not installing any CA certificate");
+                AppStreamWriter.WriteLine("log:CA_CERTIFICATE_PATH was not set or null, not installing any CA certificate");
             }
         }
     }

@@ -18,7 +18,7 @@ namespace IoTDeviceAppLauncher
 #if DESKTOP_TEST
         static DeviceClient deviceClient;
 #else
-        static ModuleClient moduleClient;      
+        static ModuleClient moduleClient;
 #endif
         static CancellationTokenSource cancellationTokenSource;
 
@@ -48,7 +48,7 @@ namespace IoTDeviceAppLauncher
 
             cancellationTokenSource = new CancellationTokenSource();
             AssemblyLoadContext.Default.Unloading += (ctx) => { cancellationTokenSource.Cancel(); };
-            Console.CancelKeyPress += (sender,cpe)=> { cancellationTokenSource.Cancel(); };
+            Console.CancelKeyPress += (sender, cpe) => { cancellationTokenSource.Cancel(); };
 #if DESKTOP_TEST
             while (true)
             {
@@ -61,7 +61,7 @@ namespace IoTDeviceAppLauncher
             }
 #endif
             WhenCancelled(cancellationTokenSource.Token).Wait();
-            foreach(var pkey in launchedIoTDevProcs.Keys)
+            foreach (var pkey in launchedIoTDevProcs.Keys)
             {
                 launchedIoTDevProcs[pkey].Stop().Wait();
             }
@@ -87,6 +87,8 @@ namespace IoTDeviceAppLauncher
             await moduleClient.SetInputMessageHandlerAsync("messageInput", inputMessageHandler, moduleClient);
         }
 
+        // message for D2C : should be "d2c:..."
+        // message for Update Reported Properties  : should be "urp:"
         private static async Task<MessageResponse> inputMessageHandler(Message message, object userContext)
         {
             var target = message.Properties["target"];
@@ -118,7 +120,7 @@ namespace IoTDeviceAppLauncher
             }
         }
 
-        static Dictionary<string, IoTDeviceAppProcess> launchedIoTDevProcs = new Dictionary<string, IoTDeviceAppProcess>(); 
+        static Dictionary<string, IoTDeviceAppProcess> launchedIoTDevProcs = new Dictionary<string, IoTDeviceAppProcess>();
         private static async Task<MethodResponse> directMethodHandler(MethodRequest methodRequest, object userContext)
         {
             string resultPayload = "";
@@ -138,12 +140,16 @@ namespace IoTDeviceAppLauncher
                             string trustedCACertPath = "";
                             if (payloadJson.LaunchCommand != null) launchCommand = payloadJson.LaunchCommand;
                             if (payloadJson.TrustedCACertPath != null) trustedCACertPath = payloadJson.TrustedCACertPath;
-                            if (launchCommand != null && trustedCACertPath!=null)
+                            if (launchCommand != null && trustedCACertPath != null)
                             {
                                 var iotAppProc = new IoTDeviceAppProcess(launchCommand, trustedCACertPath);
+#if DESKTOP_TEST
+#else
+                                iotAppProc.EdgeHubMessageOutputName = "messageOutput";
+                                iotAppProc.ParentModuleClient = moduleClient;
+#endif
                                 var p = iotAppProc.Create(methodRequest.DataAsJson);
                                 launchedIoTDevProcs.Add(appDeviceId, iotAppProc);
-
                                 var started = await iotAppProc.Start();
                                 if (started)
                                 {

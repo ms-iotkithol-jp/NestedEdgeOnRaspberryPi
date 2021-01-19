@@ -2,6 +2,7 @@
 // IoT Edge Module として起動すると、親プロセスとの間でStandard Input、Standard Outputのテキスト受け渡しができなかったので、
 // とりあえず、Named Pipeを試してみたが、Standard Input、Standard Outputは、Create Optionsで、OpenStdionをtrueに設定すると使えるようになったので、
 // そちらを採用。悪戦苦闘の記録として一応残しておく
+//#define DESKTOP_TEST
 
 using System;
 using System.Collections.Generic;
@@ -10,6 +11,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.IO.Pipes;
+using Microsoft.Azure.Devices.Client;
 
 namespace IoTDeviceAppLauncher
 {
@@ -49,6 +51,14 @@ namespace IoTDeviceAppLauncher
             this.trustedCACertPath = trustedCACertPath;
             IsStarted = false;
         }
+#if DESKTOP_TEST
+#else
+        public ModuleClient ParentModuleClient { get; set; }
+        public string EdgeHubMessageOutputName { get; set; }
+        public static readonly string StdOutC2DMessageKey = "Recieved:";
+        public static readonly string StdOutDirectMethodKey = "Invoked:";
+        public static readonly string StdOutDesiredPropsKey = "Updated:";
+#endif
 
         public Process Create(string argsJson)
         {
@@ -105,6 +115,38 @@ namespace IoTDeviceAppLauncher
         {
             Console.WriteLine($"[{TargetDeviceId}]output - ");
             Console.WriteLine(e.Data);
+#if DESKTOP_TEST
+#else
+            string message = "";
+            string msgType = "";
+            if (e.Data.StartsWith(StdOutC2DMessageKey))
+            {
+                message = e.Data.Substring(StdOutC2DMessageKey.Length);
+                msgType = "c2d";
+            }
+            else if (e.Data.StartsWith(StdOutDesiredPropsKey))
+            {
+                message = e.Data.Substring(StdOutDirectMethodKey.Length);
+                msgType = "dm";
+            }
+            else if (e.Data.StartsWith(StdOutDesiredPropsKey))
+            {
+                message = e.Data.Substring(StdOutDesiredPropsKey.Length);
+                msgType = "dp";
+            }
+            if (!string.IsNullOrEmpty(msgType))
+            {
+                var msgContent = new
+                {
+                    deviceid = TargetDeviceId,
+                    msgtype = msgType,
+                    content = message
+                };
+                var msgContentJson = Newtonsoft.Json.JsonConvert.SerializeObject(msgContent);
+                Console.WriteLine($"Send to {EdgeHubMessageOutputName} - '{msgContentJson}'");
+                ParentModuleClient.SendEventAsync(EdgeHubMessageOutputName, new Message(System.Text.Encoding.UTF8.GetBytes(msgContentJson))).Wait();
+            }
+#endif
         }
 
         public async Task<bool> Start()
