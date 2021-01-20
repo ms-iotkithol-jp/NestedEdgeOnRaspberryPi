@@ -45,7 +45,7 @@ namespace IoTDeviceAppForGatewayEdge
             if (args.Length == 0)
             {
                 AppStreamWriter.WriteLine("log:Command line:");
-                AppStreamWriter.WriteLine("log:dotnet run iothub-device-connection-string [IOTEDGE_TRUSTED_CA_CERTIFICATE_PEM_PATH]");
+                AppStreamWriter.WriteLine("log:dotnet run \"iothub-device-connection-string\" targetId [IOTEDGE_TRUSTED_CA_CERTIFICATE_PEM_PATH]");
                 return;
             }
             
@@ -82,7 +82,7 @@ namespace IoTDeviceAppForGatewayEdge
 
         static async Task DoWork(string iothubCS)
         {
-            DeviceClient deviceClient = DeviceClient.CreateFromConnectionString(iothubCS,TransportType.Mqtt);
+            DeviceClient deviceClient = DeviceClient.CreateFromConnectionString(iothubCS);
             try
             {
                 string deviceId = iothubCS.Split(";")[1].Split("=")[1];
