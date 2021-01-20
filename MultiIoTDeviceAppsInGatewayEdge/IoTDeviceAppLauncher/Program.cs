@@ -111,11 +111,11 @@ namespace IoTDeviceAppLauncher
             var index = input.IndexOf(":");
             if (index > 0)
             {
-                var deviceId = input.Substring(0, index);
+                var targetDeviceId = input.Substring(0, index);
                 var message = input.Substring(index + 1);
-                if (launchedIoTDevProcs.ContainsKey(deviceId))
+                if (launchedIoTDevProcs.ContainsKey(targetDeviceId))
                 {
-                    await launchedIoTDevProcs[deviceId].SendMessage(System.Text.Encoding.UTF8.GetBytes(message));
+                    await launchedIoTDevProcs[targetDeviceId].SendMessage(System.Text.Encoding.UTF8.GetBytes(message));
                 }
             }
         }
@@ -129,7 +129,9 @@ namespace IoTDeviceAppLauncher
             dynamic payloadJson = Newtonsoft.Json.JsonConvert.DeserializeObject(methodRequest.DataAsJson);
             string appDeviceId = "";
             if (payloadJson.DeviceId != null) appDeviceId = payloadJson.DeviceId;
-            if (appDeviceId != null)
+            string targetDeviceId = "";
+            if (payloadJson.TargetId != null) targetDeviceId = payloadJson.TargetId;
+            if (targetDeviceId != null)
             {
                 try
                 {
@@ -140,40 +142,48 @@ namespace IoTDeviceAppLauncher
                             string trustedCACertPath = "";
                             if (payloadJson.LaunchCommand != null) launchCommand = payloadJson.LaunchCommand;
                             if (payloadJson.TrustedCACertPath != null) trustedCACertPath = payloadJson.TrustedCACertPath;
-                            if (launchCommand != null && trustedCACertPath != null)
+                            if (launchedIoTDevProcs.ContainsKey(targetDeviceId))
                             {
-                                var iotAppProc = new IoTDeviceAppProcess(launchCommand, trustedCACertPath);
-#if DESKTOP_TEST
-#else
-                                iotAppProc.EdgeHubMessageOutputName = "messageOutput";
-                                iotAppProc.ParentModuleClient = moduleClient;
-#endif
-                                var p = iotAppProc.Create(methodRequest.DataAsJson);
-                                launchedIoTDevProcs.Add(appDeviceId, iotAppProc);
-                                var started = await iotAppProc.Start();
-                                if (started)
-                                {
-                                    resultPayload = "Created and Started";
-                                    resultStatus = 201;
-                                }
-                                else
-                                {
-                                    resultPayload = "Failed";
-                                    resultStatus = 202;
-                                }
+                                resultPayload = $"{targetDeviceId} has already been created";
+                                resultStatus = 202;
                             }
                             else
                             {
-                                resultPayload = "Bad Request";
-                                resultStatus = 404;
+                                if (launchCommand != null && trustedCACertPath != null && appDeviceId != null)
+                                {
+                                    var iotAppProc = new IoTDeviceAppProcess(launchCommand, trustedCACertPath, targetDeviceId, appDeviceId);
+#if DESKTOP_TEST
+#else
+                                    iotAppProc.EdgeHubMessageOutputName = "messageOutput";
+                                    iotAppProc.ParentModuleClient = moduleClient;
+#endif
+                                    var p = iotAppProc.Create(methodRequest.DataAsJson);
+                                    launchedIoTDevProcs.Add(targetDeviceId, iotAppProc);
+                                    var started = await iotAppProc.Start();
+                                    if (started)
+                                    {
+                                        resultPayload = "Created and Started";
+                                        resultStatus = 201;
+                                    }
+                                    else
+                                    {
+                                        resultPayload = "Start Failed";
+                                        resultStatus = 202;
+                                    }
+                                }
+                                else
+                                {
+                                    resultPayload = "Bad Request";
+                                    resultStatus = 404;
+                                }
                             }
                             break;
                         case "Stop":
-                            if (launchedIoTDevProcs.ContainsKey(appDeviceId))
+                            if (launchedIoTDevProcs.ContainsKey(targetDeviceId))
                             {
-                                var iotDevProc = launchedIoTDevProcs[appDeviceId];
+                                var iotDevProc = launchedIoTDevProcs[targetDeviceId];
                                 await iotDevProc.Stop();
-                                launchedIoTDevProcs.Remove(appDeviceId);
+                                launchedIoTDevProcs.Remove(targetDeviceId);
                                 resultPayload = "Stopped";
                             }
                             else
@@ -183,11 +193,13 @@ namespace IoTDeviceAppLauncher
                             }
                             break;
                         case "SendMessageToIoTDevApp":
-                            if (launchedIoTDevProcs.ContainsKey(appDeviceId))
+                            if (launchedIoTDevProcs.ContainsKey(targetDeviceId))
                             {
-                                var iotDevProc = launchedIoTDevProcs[appDeviceId];
+                                var iotDevProc = launchedIoTDevProcs[targetDeviceId];
                                 dynamic toMsg = payloadJson["message"];
                                 string msg = Newtonsoft.Json.JsonConvert.SerializeObject(toMsg);
+                                string msgType = payloadJson["type"];
+                                msg = $"{msgType}:{msg}";
                                 await iotDevProc.SendMessage(System.Text.Encoding.UTF8.GetBytes(msg));
                                 resultPayload = $"Sent msg({msg}) to {appDeviceId}";
                             }

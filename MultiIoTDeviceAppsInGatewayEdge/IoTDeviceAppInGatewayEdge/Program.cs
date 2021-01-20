@@ -50,10 +50,12 @@ namespace IoTDeviceAppForGatewayEdge
             }
             
             string iothubcs = args[0];
+            TargetDeviceId = args[1];
             AppStreamWriter.WriteLine($"log:Connection string of IoT Hub Device:{iothubcs}");
-            if (args.Length == 2)
+            AppStreamWriter.WriteLine($"log:TargetId={TargetDeviceId}");
+            if (args.Length == 3)
             {
-                string trustedCACertPath = args[1];
+                string trustedCACertPath = args[2];
                 InstallCACert(trustedCACertPath);
                 AppStreamWriter.WriteLine($"log:Installed {trustedCACertPath} as Certficate");
             }
@@ -76,9 +78,11 @@ namespace IoTDeviceAppForGatewayEdge
         static TextReader AppStreamReader { get; set; }
         static TextWriter AppStreamWriter { get; set; }
 
+        static string TargetDeviceId { get; set; }
+
         static async Task DoWork(string iothubCS)
         {
-            DeviceClient deviceClient = DeviceClient.CreateFromConnectionString(iothubCS);
+            DeviceClient deviceClient = DeviceClient.CreateFromConnectionString(iothubCS,TransportType.Mqtt);
             try
             {
                 string deviceId = iothubCS.Split(";")[1].Split("=")[1];
@@ -89,6 +93,14 @@ namespace IoTDeviceAppForGatewayEdge
                 await deviceClient.SetReceiveMessageHandlerAsync(ReceiveMessageHandler, deviceClient);
 
                 await deviceClient.OpenAsync();
+                var reported = new TwinCollection();
+                var targetProps = new
+                {
+                    target = TargetDeviceId
+                };
+                reported["configuration"] = new TwinCollection(Newtonsoft.Json.JsonConvert.SerializeObject(targetProps));
+                await deviceClient.UpdateReportedPropertiesAsync(reported);
+
 #if TEST
                 int count = 10;
                 for(int i = 0; i < count; i++)
@@ -116,20 +128,26 @@ namespace IoTDeviceAppForGatewayEdge
                     }
                     else
                     {
-                        string d2cMessageKey = "d2c:";
-                        string urpMessageKey = "urp:";
-                        if (input.StartsWith(d2cMessageKey))
+                        try
                         {
-                            var msg = new Message(System.Text.Encoding.UTF8.GetBytes(input.Substring(d2cMessageKey.Length)));
-                            AppStreamWriter.WriteLine($"log:Send D2C - {input}");
-                            await deviceClient.SendEventAsync(msg);
+                            string d2cMessageKey = "d2c:";
+                            string urpMessageKey = "urp:";
+                            if (input.StartsWith(d2cMessageKey))
+                            {
+                                var msg = new Message(System.Text.Encoding.UTF8.GetBytes(input.Substring(d2cMessageKey.Length)));
+                                AppStreamWriter.WriteLine($"log:Send D2C - {input}");
+                                await deviceClient.SendEventAsync(msg);
+                            }
+                            else if (input.StartsWith(urpMessageKey))
+                            {
+                                AppStreamWriter.WriteLine($"log:Update RP - {input}");
+                                reported["External"] = new TwinCollection(input.Substring(urpMessageKey.Length));
+                                await deviceClient.UpdateReportedPropertiesAsync(reported);
+                            }
                         }
-                        else if (input.StartsWith(urpMessageKey))
+                        catch(Exception ex)
                         {
-                            var reported = new TwinCollection();
-                            AppStreamWriter.WriteLine($"log:Update RP - {input}");
-                            reported["External"] = new TwinCollection(input.Substring(urpMessageKey.Length));
-                            await deviceClient.UpdateReportedPropertiesAsync(reported);
+                            AppStreamWriter.WriteLine($"error:Exeption - {ex.Message}");
                         }
                     }
                 }

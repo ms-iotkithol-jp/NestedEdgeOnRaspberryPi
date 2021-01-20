@@ -22,6 +22,7 @@ namespace IoTDeviceAppLauncher
 
         public static readonly string HostNameArgKey = "HostName";
         public static readonly string DeviceIdArgKey = "DeviceId";
+        public static readonly string TargetDeviceIdArgKey = "TargetId";
         public static readonly string SharedAccessKeyArgKey = "SharedAccessKey";
         public static readonly string GatewayHostNameArgKey = "GatewayHostName";
 
@@ -38,6 +39,7 @@ namespace IoTDeviceAppLauncher
         private string launchName;
         private string trustedCACertPath;
         public bool IsStarted { get; set; }
+        public string IoTHubDeviceId { get; set; }
         public string TargetDeviceId { get; set; }
 
         public StreamReader myStandardOutput { get { return myProcess.StandardOutput; } }
@@ -45,10 +47,12 @@ namespace IoTDeviceAppLauncher
   
         
         // commandName = "dotnet run iotdevapp.dll"
-        public IoTDeviceAppProcess(string launchName, string trustedCACertPath)
+        public IoTDeviceAppProcess(string launchName, string trustedCACertPath, string targetDeviceId, string iothubDeviceId)
         {
             this.launchName = launchName;
             this.trustedCACertPath = trustedCACertPath;
+            TargetDeviceId = targetDeviceId;
+            IoTHubDeviceId = iothubDeviceId;
             IsStarted = false;
         }
 #if DESKTOP_TEST
@@ -67,9 +71,8 @@ namespace IoTDeviceAppLauncher
             string sharedAccessKey = "";
             if (json.HostName != null) hostName = json.HostName;
             if (json.SharedAccessKey != null) sharedAccessKey = json.SharedAccessKey;
-            TargetDeviceId = json.DeviceId;
 
-            string connectionString = $"\"{HostNameArgKey}={hostName};{DeviceIdArgKey}={TargetDeviceId};{SharedAccessKeyArgKey}={sharedAccessKey}";
+            string connectionString = $"\"{HostNameArgKey}={hostName};{DeviceIdArgKey}={IoTHubDeviceId};{SharedAccessKeyArgKey}={sharedAccessKey}";
             if (json.GatewayHostName is null)
             {
                 connectionString += "\"";
@@ -80,7 +83,7 @@ namespace IoTDeviceAppLauncher
             }
             string commandName = launchName;
             
-            string args = $"{connectionString} {trustedCACertPath}";
+            string args = $"{connectionString} {TargetDeviceId} {trustedCACertPath}";
             startInfo = new ProcessStartInfo(commandName);
             startInfo.Arguments = args;
             startInfo.UseShellExecute = false;
@@ -107,13 +110,13 @@ namespace IoTDeviceAppLauncher
 
         private void MyProcess_ErrorDataReceived(object sender, DataReceivedEventArgs e)
         {
-            Console.WriteLine($"[{TargetDeviceId}]error - ");
+            Console.WriteLine($"[{IoTHubDeviceId}]error - ");
             Console.WriteLine(e.Data);
         }
 
         private void MyProcess_OutputDataReceived(object sender, DataReceivedEventArgs e)
         {
-            Console.WriteLine($"[{TargetDeviceId}]output - ");
+            Console.WriteLine($"[{IoTHubDeviceId}]output - ");
             Console.WriteLine(e.Data);
 #if DESKTOP_TEST
 #else
@@ -138,7 +141,7 @@ namespace IoTDeviceAppLauncher
             {
                 var msgContent = new
                 {
-                    deviceid = TargetDeviceId,
+                    targetid = TargetDeviceId,
                     msgtype = msgType,
                     content = message
                 };
@@ -199,7 +202,7 @@ namespace IoTDeviceAppLauncher
                 while (true)
                 {
                     string output = await reader.ReadLineAsync();
-                    Console.WriteLine($"[{TargetDeviceId}] ${output}");
+                    Console.WriteLine($"[{IoTHubDeviceId}] ${output}");
                 }
             }
             catch(Exception ex)
