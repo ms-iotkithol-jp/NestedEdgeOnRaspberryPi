@@ -124,4 +124,11 @@ msgtype の種別は以下の通り。
 |c2d|Azure IoT Hub からの Cloud 2 Devic メッセージ|
 |dm|Direct Method コール|
 |dp|Desired Properties 更新| 
+IoTDeviceAppLauncher モジュールと別プロトコル側を扱う Azure IoT Edge Module の間のやり取りは、全て、別プロセス側のデバイスのアイデンティティで行う。
 
+---
+## お試し用 Docker Image 
+|実行環境|Image Uri|
+|-|-|
+|Raspberry Pi|embeddedgeorge/iotdevapplauncher:1.0.0-arm32v7|
+|Windows 10|embeddedgeorge/iotdevapplauncher:1.0.0-windows-amd64
