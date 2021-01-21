@@ -30,13 +30,13 @@ Azure Portal で、Azure IoT Edge Module として Deploy 指定する。Contain
 ```
 ※ 子プロセスの Standard Input、Standard Output を使って親プロセスと通信するために必要な設定らしいよ。  
 
-## IoT Device のプロビジョニング  
+## IoTDevAppLauncher の関数  
 Deploy した Module の Direct Method を Invoke してIoT Device をプロビジョニングする。  
-
 関数名： Start  
 Payload：
 ```json
 {
+  "TargetId":"ext1",
   "LaunchCommand": "./iotapp/IoTDeviceAppForGatewayEdge",
   "HostName": "youriothub.azure-devices.net",
   "DeviceId": "nested-child-app-1",
@@ -45,6 +45,83 @@ Payload：
   "TrustedCACertPath": "./iotapp/azure-iot-test-only.root.ca.cert.pem"
 }
 ```
-Stop という Direct Method をコールすると、停止＆削除  
+|パラメータ|意味|
+|-|-|
+|TargetId|IoT Hub 未対応のプロトコルで通信しているデバイスの名前|
+|LaunchCommand|TargetId のデバイスを Azure IoT Hub に登録された IoT Device として扱うためのアプリケーションコマンド|
+|HostName|接続先の Azure IoT Hub の URL|
+|DeviceId|Azure IoT Hub 上の登録された Device Id|
+|ShareAccessKey|DeviceId の Shared Access Key|
+|GatewayHostName|Azure IoT Edge のホストの IP アドレス、または、DNS上のFQDN名|
+|TrustedCACertPath|IoT Edge Gateway で Downstream デバイスを接続するための証明書|
+この関数をコールするごとに対応するデバイスとして Azure IoT Hub と通信するプロセスを、本モジュール内で起動する。  
 
-## 別プロトコル側と IoTAppForGatewayEdge との相互通信  
+---
+関数名: Stop  
+Payload：
+```json
+{
+  "TargetId":"ext1"
+}
+```
+Start で起動したプロセスを停止＆削除する。
+|パラメータ|意味|
+|-|-|
+|TargetId|Start で指定した TargetId|
+
+---
+関数名: SendMessageToIoTDevApp  
+Payload:
+```json
+{
+    "TargetId":"ext1",
+    "type":"d2c",
+    "message":{"message":"test","value":2}}
+```
+|パラメータ|意味|
+|-|-|
+|TargetId|Start で指定した TargetId|
+|type|メッセージの種別|
+|message|メッセージの本体|
+テスト用の関数。messageInput の代替。  
+- type が "d2c" の場合、DeviceId からの Azure IoTHub への Device 2 Cloud メッセージが送信される
+- type が "urp" の場合、DeviceId の Reported Properties が更新される。
+
+---
+## 別プロトコル側と IoTDeviceAppForGatewayEdge との相互通信  
+IoTDeviceAppLauncer のメッセージ入出力を使って、別プロトコル側と Azure IoT Hub 側での、Identity 変換と双方向通信を行う。  
+### messageInput 
+messageInput を介して他の Azure IoT Edge Module からデータを受信し、IoTDeviceAppforGatewayEdge プロセスにメッセージを転送する。  
+これにより、Azure IoT Hub へのメッセージ送信、Reported Properties の更新が行われる。  
+データフォーマット：  
+```
+type:message
+```
+- type が "d2c" の場合、DeviceId からの Azure IoTHub への Device 2 Cloud メッセージが送信される
+- type が "urp" の場合、DeviceId の Reported Properties が更新される
+type が urp の場合は、messageの部分は、JSON形式のテキストでなければならない。d2c の場合は、JSON 形式でなくても構わない。  
+送信するメッセージには、"target" をキー、値を別プロトコル側の識別子（Start の TargetId）とするプロパティを付与すること。
+
+### messageOutput
+Azure IoT Hub から IoTDeviceAppforGatewayEdge プロセスに送信された Device 2 Cloud メッセージ、Desired Properties の更新、Direct Method のコールに関する情報が出力される。  
+別プロトコル側の Azure IoT Edge Module はこのアウトプットからメッセージを受信すること。  
+メッセージフォーマットは、以下の通り
+```json
+{
+    "targetid":"ext1",
+    "msgtype":"c2d",
+    "message":"{"message":"hello"}"
+}
+```
+|プロパティ|意味|
+|-|-|
+|targetid|Start で指定した TargetId|
+|msgtype|メッセージの種別|
+|message|メッセージの本体|
+msgtype の種別は以下の通り。  
+|種別|意味|
+|-|-|
+|c2d|Azure IoT Hub からの Cloud 2 Devic メッセージ|
+|dm|Direct Method コール|
+|dp|Desired Properties 更新| 
+
