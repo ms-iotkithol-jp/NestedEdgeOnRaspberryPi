@@ -24,6 +24,6 @@ RUN dir
 RUN dir .\\iotapp
 
 # Case for running on IoT Edge Runtime
-ENTRYPOINT [".\\IoTDeviceAppLauncher"]
+ENTRYPOINT ["c:\\app\\IoTDeviceAppLauncher"]
 # Case for running on Docker : at the time to define DESKTOP_TEST in IoTDeviceAppLauncher/Program.cs
-# ENTRYPOINT [".\\IoTDeviceAppLauncher", "<- device connection string ->"]
+# ENTRYPOINT ["c:\\app\\IoTDeviceAppLauncher", "<- device connection string ->"]
