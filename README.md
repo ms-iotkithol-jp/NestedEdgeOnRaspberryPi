@@ -187,6 +187,30 @@ edgeHub                     running          Up an hour       192.168.0.108:8000
 以上で、Nested Edge の確認は終了。 
 
 ---
+
+## MQTT Topic on IoT Edge
+Preview 機能の MQTT Topic を使った通信のセットアップ方法を説明する。  
+本機能を使うと、mosquitto 等の一般的な mqtt プロトコルで通信しているアプリが、IoT Edge の MQTT Topic を使った pub/sub 通信や、IoT Hub へのメッセージ送信ができる。  
+これまで説明した方法でのセットアップが済んだ状況で、「[Aure IoT Edge を使用した発行とサブスクライブ](https://docs.microsoft.com/ja-jp/azure/iot-edge/how-to-publish-subscribe?view=iotedge-2020-11)」を参考にセットアップを行う。  
+ハマりポイントがいくつかあるので、解説する。  
+
+### Deployment.json の配置 
+「[承認](https://docs.microsoft.com/ja-jp/azure/iot-edge/how-to-publish-subscribe?view=iotedge-2020-11#authorization)」に記載の、Deployment.json の IoT Hub への通知は VS Code の Extension では Error になるようなので、Azure CLI で実行する。  
+```
+PS> az login
+PS> az iot edge set-modules --device-id yourdevice --hub-name youriothubname --content .\deployment.json
+```
+<i>yourdevice</i> は、親でも子でもどちらの IoT Edge デバイスでも構わない。  
+
+### SAS Token の生成  
+Azure IoT Hub の利用になれている人ほどハマりがちなので念のため記載。  
+「[パブリッシャーとサブスクライバーのクライアントを作成する](https://docs.microsoft.com/ja-jp/azure/iot-edge/how-to-publish-subscribe?view=iotedge-2020-11#create-publisher-and-subscriber-clients)」 の 2.に記載されている通り、subscribe / publish のパスワードで使う SAS Token は、Azure CLI のコマンドで生成したものを利用する。  
+また、最後のオプションの <b>--du 3600 </b> は、3600秒だけ有効なトークンということなので、1時間経過後には無効になることに注意すること。また、MQTT で通信する Publisher と Subscriber は、IoT Hub に IoT Device として登録されていて、かつ、どちらのデバイスも、通信先の Azure IoT Edge デバイスの子デバイスとして設定されていなければならないことに注意。  
+
+### その他  
+親子関係設定が完了している、二つの IoT Edge Device（Raspberry Pi）は、HW的に信頼関係が証明書で結ばれているので、親側の IoT Edge の MQTT Topic 機能を有効化した場合、 「[購読](https://docs.microsoft.com/ja-jp/azure/iot-edge/how-to-publish-subscribe?view=iotedge-2020-11#subscribe)」、「[発行](https://docs.microsoft.com/ja-jp/azure/iot-edge/how-to-publish-subscribe?view=iotedge-2020-11#publish)」は、親側、子側、どちらの Raspberry Pi で実行（同一デバイスでも異なるデバイスでもどちらでも可）しても、Subscriber 側が Publisher が発行したメッセージを受信できる。  
+
+---
 ## IoT Edge Module 内で、Device SDK アプリを起動し、そのアプリを 子デバイスとして扱う  
 IoT Edge の Transparent Gateway としての利用は、ローカルネット側で様々な通信プロトコルで通信しているデバイス群を IoT Hub に接続する Protocol Gateway の実現方法として活用される。  
 このような場合、プロトコルで通信しているデバイス群をそれぞれ IoT Device として IoT Hub に登録し、IoT Edge Module 内で、それぞれの IoT Device 用のプロセスを作って、そのプロセス内で、登録された各 IoT Device 用の接続文字列を使って、IoT Edge デバイスを介して IoT Hub に接続し双方向通信を行う、といった実装が可能である。  
